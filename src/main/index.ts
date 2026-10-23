@@ -80,6 +80,7 @@ function registerIpcHandlers() {
       const r = running.get(p.id);
       return {
         ...p,
+        mozilla_vpn: Boolean(p.mozilla_vpn),
         tags: typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags,
         status: r ? 'running' : 'stopped',
         cdp_port: r ? r.cdpPort : undefined,
@@ -94,6 +95,7 @@ function registerIpcHandlers() {
     const existing = queryOne<Profile>('SELECT id FROM profiles WHERE id = ?', [id]);
 
     const tagsJson = JSON.stringify(profileData.tags || []);
+    const mozillaVpnInt = profileData.mozilla_vpn ? 1 : 0;
 
     if (existing) {
       runQuery(
@@ -103,7 +105,7 @@ function registerIpcHandlers() {
           canvas_mode = ?, canvas_noise_seed = ?, webgl_mode = ?, webgl_vendor = ?, webgl_renderer = ?,
           audio_mode = ?, audio_noise_seed = ?, webrtc_mode = ?, webrtc_public_ip = ?,
           timezone_mode = ?, timezone_id = ?, geolocation_mode = ?, latitude = ?, longitude = ?, accuracy = ?,
-          language = ?, cpu_cores = ?, memory_gb = ?, notes = ?, custom_flags = ?, updated_at = ?
+          language = ?, cpu_cores = ?, memory_gb = ?, notes = ?, custom_flags = ?, mozilla_vpn = ?, updated_at = ?
         WHERE id = ?`,
         [
           profileData.name || 'Profile',
@@ -137,6 +139,7 @@ function registerIpcHandlers() {
           profileData.memory_gb || 16,
           profileData.notes || '',
           profileData.custom_flags || '',
+          mozillaVpnInt,
           now,
           id,
         ]
@@ -149,14 +152,14 @@ function registerIpcHandlers() {
           canvas_mode, canvas_noise_seed, webgl_mode, webgl_vendor, webgl_renderer,
           audio_mode, audio_noise_seed, webrtc_mode, webrtc_public_ip,
           timezone_mode, timezone_id, geolocation_mode, latitude, longitude, accuracy,
-          language, cpu_cores, memory_gb, notes, custom_flags, created_at, updated_at
+          language, cpu_cores, memory_gb, notes, custom_flags, mozilla_vpn, created_at, updated_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?
         )`,
         [
           id,
@@ -191,6 +194,7 @@ function registerIpcHandlers() {
           profileData.memory_gb || 16,
           profileData.notes || '',
           profileData.custom_flags || '',
+          mozillaVpnInt,
           now,
           now,
         ]
@@ -200,6 +204,7 @@ function registerIpcHandlers() {
     const saved = queryOne<Profile>('SELECT * FROM profiles WHERE id = ?', [id])!;
     return {
       ...saved,
+      mozilla_vpn: Boolean(saved.mozilla_vpn),
       tags: typeof saved.tags === 'string' ? JSON.parse(saved.tags) : saved.tags,
       status: isProfileRunning(id) ? 'running' : 'stopped',
     };
@@ -245,14 +250,14 @@ function registerIpcHandlers() {
         canvas_mode, canvas_noise_seed, webgl_mode, webgl_vendor, webgl_renderer,
         audio_mode, audio_noise_seed, webrtc_mode, webrtc_public_ip,
         timezone_mode, timezone_id, geolocation_mode, latitude, longitude, accuracy,
-        language, cpu_cores, memory_gb, notes, custom_flags, created_at, updated_at
+        language, cpu_cores, memory_gb, notes, custom_flags, mozilla_vpn, created_at, updated_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?
       )`,
       [
         clonedData.id,
@@ -287,6 +292,7 @@ function registerIpcHandlers() {
         clonedData.memory_gb,
         clonedData.notes,
         clonedData.custom_flags,
+        clonedData.mozilla_vpn ? 1 : 0,
         now,
         now,
       ]
@@ -316,9 +322,12 @@ function registerIpcHandlers() {
   ipcMain.handle('profiles:start', async (_, id: string) => {
     const settings = queryAll<{ key: string; value: string }>('SELECT * FROM settings');
     const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
-    const customChromium = settingsMap.get('chromium_path');
+    const profile = queryOne<Profile>('SELECT browser_type FROM profiles WHERE id = ?', [id]);
+    const customExec = profile?.browser_type === 'firefox'
+      ? settingsMap.get('firefox_path')
+      : settingsMap.get('chromium_path');
 
-    const instance = await startProfile(id, customChromium);
+    const instance = await startProfile(id, customExec);
     return {
       success: true,
       profileId: id,
@@ -470,6 +479,7 @@ function registerIpcHandlers() {
     }
     return {
       chromium_path: settings.chromium_path || '',
+      firefox_path: settings.firefox_path || '',
       api_port: parseInt(settings.api_port || '3001', 10),
       api_enabled: settings.api_enabled !== 'false',
       theme: settings.theme || 'dark',

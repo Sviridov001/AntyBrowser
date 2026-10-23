@@ -11,7 +11,7 @@
     "start": "electron .",
     "pack:dir": "npm run build && electron-builder --dir",
     "pack:portable": "npm run build && electron-builder --win portable --x64",
-    "test": "node dist-tests/tests/persistence.test.js && node dist-tests/tests/portability.test.js && node dist-tests/tests/proxy.test.js && node dist-tests/tests/bridge.test.js && node dist-tests/tests/tabs.test.js"
+    "test": "node dist-tests/tests/persistence.test.js && node dist-tests/tests/portability.test.js && node dist-tests/tests/proxy.test.js && node dist-tests/tests/bridge.test.js && node dist-tests/tests/tabs.test.js && node dist-tests/tests/firefox.test.js"
   },
   "build": {
     "appId": "com.antybrowser.portable",

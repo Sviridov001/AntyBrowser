@@ -104,6 +104,109 @@ export function getChromiumExecutablePath(customPath?: string): string {
 }
 
 /**
+ * Detect available Firefox executable (Mozilla Firefox, Nightly, or bundled portable)
+ */
+export function getFirefoxExecutablePath(customPath?: string): string {
+  const paths = getPortablePaths();
+
+  // 1. User configured custom path
+  if (customPath && fs.existsSync(customPath)) {
+    return customPath;
+  }
+
+  // 2. Bundled Portable Firefox in ./bin/firefox/
+  const bundledCandidates = [
+    path.join(paths.binDir, 'firefox', 'firefox.exe'),
+    path.join(paths.binDir, 'firefox.exe'),
+    path.join(paths.appDir, 'firefox', 'firefox.exe'),
+  ];
+  for (const p of bundledCandidates) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  // 3. System Mozilla Firefox / Nightly / Developer Edition
+  const firefoxCandidates = [
+    'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+    'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe',
+    'C:\\Program Files\\Firefox Nightly\\firefox.exe',
+    'C:\\Program Files\\Firefox Developer Edition\\firefox.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'Mozilla Firefox', 'firefox.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Firefox Nightly', 'firefox.exe'),
+    path.join(process.env.PROGRAMFILES || '', 'Mozilla Firefox', 'firefox.exe'),
+  ];
+  for (const p of firefoxCandidates) {
+    if (p && fs.existsSync(p)) return p;
+  }
+
+  throw new Error(
+    'Исполняемый файл Firefox не найден. Пожалуйста, установите Firefox (или Firefox Nightly с поддержкой VPN) либо укажите путь к firefox.exe в Настройках.'
+  );
+}
+
+/**
+ * Setup Firefox profile configuration via user.js
+ * Automatically activates Mozilla IP Protection (VPN) flags when requested.
+ */
+export function setupFirefoxProfile(profileDir: string, profile: Profile, proxyBridgePort?: number): void {
+  if (!fs.existsSync(profileDir)) {
+    fs.mkdirSync(profileDir, { recursive: true });
+  }
+
+  const userJsPath = path.join(profileDir, 'user.js');
+  const prefsLines: string[] = [
+    '// AntyBrowser Portable Profile Configuration for Firefox',
+    'user_pref("browser.shell.checkDefaultBrowser", false);',
+    'user_pref("browser.startup.homepage_override.mstone", "ignore");',
+    'user_pref("browser.startup.page", 3);', // Restore previous session
+    'user_pref("browser.sessionstore.resume_from_crash", true);',
+    'user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);',
+    'user_pref("app.update.auto", false);',
+    'user_pref("app.update.enabled", false);',
+    'user_pref("datareporting.policy.dataSubmissionEnabled", false);',
+    'user_pref("browser.warnOnQuit", false);',
+    'user_pref("browser.tabs.warnOnClose", false);',
+  ];
+
+  // User Agent override
+  if (profile.user_agent) {
+    prefsLines.push(`user_pref("general.useragent.override", ${JSON.stringify(profile.user_agent)});`);
+  }
+
+  // Language
+  if (profile.language) {
+    prefsLines.push(`user_pref("intl.accept_languages", ${JSON.stringify(profile.language)});`);
+  }
+
+  // WebRTC
+  if (profile.webrtc_mode === 'disable') {
+    prefsLines.push('user_pref("media.peerconnection.enabled", false);');
+  }
+
+  // Proxy Configuration
+  if (proxyBridgePort) {
+    prefsLines.push('user_pref("network.proxy.type", 1);');
+    prefsLines.push('user_pref("network.proxy.http", "127.0.0.1");');
+    prefsLines.push(`user_pref("network.proxy.http_port", ${proxyBridgePort});`);
+    prefsLines.push('user_pref("network.proxy.ssl", "127.0.0.1");');
+    prefsLines.push(`user_pref("network.proxy.ssl_port", ${proxyBridgePort});`);
+    prefsLines.push('user_pref("network.proxy.no_proxies_on", "localhost, 127.0.0.1");');
+  }
+
+  // === Mozilla IP Protection (Built-in VPN) ===
+  // Activates Mozilla VPN in Firefox 135+ / 150+
+  if (profile.mozilla_vpn) {
+    prefsLines.push('// === Mozilla IP Protection (Built-in VPN) ===');
+    prefsLines.push('user_pref("browser.ipProtection.enabled", true);');
+    prefsLines.push('user_pref("browser.ipProtection.enable", true);');
+    prefsLines.push('user_pref("browser.ipProtection.featureGate", true);');
+    prefsLines.push('user_pref("browser.ipProtection.ui.enabled", true);');
+    prefsLines.push('user_pref("browser.ipProtection.tier", "free");');
+  }
+
+  fs.writeFileSync(userJsPath, prefsLines.join('\n') + '\n', 'utf-8');
+}
+
+/**
  * Find an open TCP port for CDP
  */
 function findOpenPort(): Promise<number> {
@@ -272,23 +375,10 @@ export async function startProfile(profileId: string, customExecPath?: string): 
   }
   const cleanProxy = proxy ? sanitizeProxy(proxy) : null;
 
-  const execPath = getChromiumExecutablePath(customExecPath);
   const profileDir = path.join(paths.profilesDir, profile.id);
   if (!fs.existsSync(profileDir)) {
     fs.mkdirSync(profileDir, { recursive: true });
   }
-
-  // Setup Chromium Preferences for automatic tab preservation (restore_on_startup: 1)
-  setupProfilePreferences(profileDir);
-
-  const cdpPort = await findOpenPort();
-
-  // Create stealth unpacked extension inside profile directory
-  const extensionDir = path.join(profileDir, 'anty_stealth_extension');
-  const proxyAuth = (cleanProxy && cleanProxy.username && cleanProxy.password)
-    ? { username: cleanProxy.username, password: cleanProxy.password }
-    : undefined;
-  createProfileStealthExtension(extensionDir, proxyAuth);
 
   // Load saved tabs from previous session if they exist
   const openTabsFile = path.join(profileDir, 'open_tabs.json');
@@ -303,6 +393,101 @@ export async function startProfile(profileId: string, customExecPath?: string): 
       console.warn('Could not read open_tabs.json:', e);
     }
   }
+
+  const isFirefox = profile.browser_type === 'firefox';
+
+  if (isFirefox) {
+    // ----------------------------------------------------
+    // Firefox Profile Launch (Supports Mozilla IP Protection VPN)
+    // ----------------------------------------------------
+    const execPath = getFirefoxExecutablePath(customExecPath);
+    let proxyBridge: LocalProxyBridge | null = null;
+    let proxyBridgePort: number | undefined = undefined;
+
+    if (cleanProxy && cleanProxy.host && cleanProxy.port) {
+      if (cleanProxy.username && cleanProxy.password) {
+        try {
+          proxyBridge = await createLocalProxyBridge(cleanProxy);
+          proxyBridgePort = proxyBridge.port;
+        } catch (bridgeErr) {
+          console.error('Failed to start proxy bridge for Firefox:', bridgeErr);
+        }
+      }
+    }
+
+    // Configure user.js with IP Protection VPN and proxy
+    setupFirefoxProfile(profileDir, profile, proxyBridgePort);
+
+    const args = [
+      '-no-remote',
+      '-profile',
+      profileDir,
+    ];
+
+    if (profile.custom_flags) {
+      const extra = profile.custom_flags.split(' ').map((s) => s.trim()).filter(Boolean);
+      args.push(...extra);
+    }
+
+    if (savedTabs.length > 0) {
+      args.push(...savedTabs);
+    } else if (profile.mozilla_vpn) {
+      // First launch with Mozilla VPN: open account login and IP check page
+      args.push('about:preferences#fxa', 'https://browserleaks.com/ip');
+    } else {
+      args.push('https://browserleaks.com/canvas');
+    }
+
+    console.log(`[AntyBrowser] Launching Firefox profile ${profileId} (Mozilla VPN=${Boolean(profile.mozilla_vpn)}):`, args);
+
+    const child = spawn(execPath, args, {
+      detached: false,
+      stdio: 'ignore',
+    });
+
+    child.on('error', (err) => {
+      console.error(`Firefox process error for profile ${profileId}:`, err);
+      runningInstances.delete(profileId);
+    });
+
+    child.on('exit', () => {
+      console.log(`Firefox process exited for profile ${profileId}`);
+      const inst = runningInstances.get(profileId);
+      if (inst) {
+        if (inst.proxyBridge) inst.proxyBridge.close().catch(() => {});
+        runningInstances.delete(profileId);
+      }
+    });
+
+    const instance: RunningInstance = {
+      profileId,
+      process: child,
+      cdpPort: 0,
+      wsEndpoint: '',
+      proxyBridge,
+      startedAt: new Date().toISOString(),
+    };
+
+    runningInstances.set(profileId, instance);
+    return instance;
+  }
+
+  // ----------------------------------------------------
+  // Chromium Profile Launch
+  // ----------------------------------------------------
+  const execPath = getChromiumExecutablePath(customExecPath);
+
+  // Setup Chromium Preferences for automatic tab preservation (restore_on_startup: 1)
+  setupProfilePreferences(profileDir);
+
+  const cdpPort = await findOpenPort();
+
+  // Create stealth unpacked extension inside profile directory
+  const extensionDir = path.join(profileDir, 'anty_stealth_extension');
+  const proxyAuth = (cleanProxy && cleanProxy.username && cleanProxy.password)
+    ? { username: cleanProxy.username, password: cleanProxy.password }
+    : undefined;
+  createProfileStealthExtension(extensionDir, proxyAuth);
 
   // Build Chromium flags
   const args = [
@@ -505,28 +690,30 @@ export async function stopProfile(profileId: string): Promise<boolean> {
   const cookieFile = path.join(profileDir, 'cookies.json');
   const openTabsFile = path.join(profileDir, 'open_tabs.json');
 
-  // 1. Save open tabs before closing
-  try {
-    await saveOpenTabs(instance.cdpPort, openTabsFile);
-  } catch (e) {}
+  // 1. Save open tabs before closing (Chromium CDP)
+  if (instance.cdpPort > 0) {
+    try {
+      await saveOpenTabs(instance.cdpPort, openTabsFile);
+    } catch (e) {}
 
-  // 2. Final cookie dump (try browserWs first for browser-wide cookies, fallback to pageWs)
-  try {
-    if (instance.browserWs && instance.browserWs.readyState === WebSocket.OPEN) {
-      const result = await sendCdpCommand(instance.browserWs, 'Storage.getCookies');
-      if (result && Array.isArray(result.cookies)) {
-        fs.writeFileSync(cookieFile, JSON.stringify(result.cookies, null, 2), 'utf-8');
-        console.log(`[AntyBrowser] Saved ${result.cookies.length} cookies on profile stop.`);
+    // 2. Final cookie dump (try browserWs first for browser-wide cookies, fallback to pageWs)
+    try {
+      if (instance.browserWs && instance.browserWs.readyState === WebSocket.OPEN) {
+        const result = await sendCdpCommand(instance.browserWs, 'Storage.getCookies');
+        if (result && Array.isArray(result.cookies)) {
+          fs.writeFileSync(cookieFile, JSON.stringify(result.cookies, null, 2), 'utf-8');
+          console.log(`[AntyBrowser] Saved ${result.cookies.length} cookies on profile stop.`);
+        }
+      } else if (instance.pageWs && instance.pageWs.readyState === WebSocket.OPEN) {
+        const result = await sendCdpCommand(instance.pageWs, 'Network.getAllCookies');
+        if (result && Array.isArray(result.cookies)) {
+          fs.writeFileSync(cookieFile, JSON.stringify(result.cookies, null, 2), 'utf-8');
+          console.log(`[AntyBrowser] Saved ${result.cookies.length} cookies on profile stop.`);
+        }
       }
-    } else if (instance.pageWs && instance.pageWs.readyState === WebSocket.OPEN) {
-      const result = await sendCdpCommand(instance.pageWs, 'Network.getAllCookies');
-      if (result && Array.isArray(result.cookies)) {
-        fs.writeFileSync(cookieFile, JSON.stringify(result.cookies, null, 2), 'utf-8');
-        console.log(`[AntyBrowser] Saved ${result.cookies.length} cookies on profile stop.`);
-      }
+    } catch (e) {
+      console.error('Error dumping cookies on stop:', e);
     }
-  } catch (e) {
-    console.error('Error dumping cookies on stop:', e);
   }
 
   if (instance.cookieSyncInterval) clearInterval(instance.cookieSyncInterval);

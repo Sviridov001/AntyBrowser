@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Profile, ProxyItem } from '../types';
-import { WEBGL_PRESETS, SCREEN_RESOLUTIONS, USER_AGENT_PRESETS } from '../../shared/presets';
+import { WEBGL_PRESETS, SCREEN_RESOLUTIONS, USER_AGENT_PRESETS, FIREFOX_USER_AGENT_PRESETS } from '../../shared/presets';
 import { parseProxyString, cleanHost } from '../../shared/proxyUtils';
 
 interface ProfileModalProps {
@@ -39,6 +39,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [os, setOs] = useState<'windows' | 'macos' | 'linux'>('windows');
+  const [browserType, setBrowserType] = useState<'chromium' | 'firefox'>('chromium');
+  const [mozillaVpn, setMozillaVpn] = useState(false);
   const [notes, setNotes] = useState('');
   const [customFlags, setCustomFlags] = useState('');
 
@@ -84,6 +86,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setGroupName(editingProfile.group_name || '');
       setTags(editingProfile.tags || []);
       setOs(editingProfile.os || 'windows');
+      setBrowserType(editingProfile.browser_type === 'firefox' ? 'firefox' : 'chromium');
+      setMozillaVpn(Boolean(editingProfile.mozilla_vpn));
       setNotes(editingProfile.notes || '');
       setCustomFlags(editingProfile.custom_flags || '');
 
@@ -125,6 +129,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setGroupName('');
     setTags(['Default']);
     setOs('windows');
+    setBrowserType('chromium');
+    setMozillaVpn(false);
     setNotes('');
     setCustomFlags('');
     setProxyMode('none');
@@ -196,7 +202,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       group_name: groupName,
       tags,
       os,
-      browser_type: 'chromium',
+      browser_type: browserType,
+      mozilla_vpn: mozillaVpn,
       proxy_id: proxyIdToUse,
       user_agent: userAgent,
       screen_width: screenWidth,
@@ -352,7 +359,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       type="button"
                       onClick={() => {
                         setOs(platform);
-                        handleRandomizeFingerprint(platform);
+                        if (browserType === 'firefox') {
+                          setUserAgent(
+                            (FIREFOX_USER_AGENT_PRESETS as any)[platform]?.[0] ||
+                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0'
+                          );
+                        } else {
+                          handleRandomizeFingerprint(platform);
+                        }
                       }}
                       className={`p-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 capitalize transition-all ${
                         os === platform
@@ -365,6 +379,93 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   ))}
                 </div>
               </div>
+
+              {/* Browser Engine Selection */}
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                  Браузерный движок
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBrowserType('chromium');
+                      setMozillaVpn(false);
+                      handleRandomizeFingerprint(os);
+                    }}
+                    className={`p-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition-all ${
+                      browserType === 'chromium'
+                        ? 'bg-blue-600/20 border-blue-500 text-white shadow-sm'
+                        : 'bg-[#151d30] border-[#24304f] text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    <span>🌐 Chromium (Chrome / Edge)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBrowserType('firefox');
+                      setUserAgent(
+                        (FIREFOX_USER_AGENT_PRESETS as any)[os]?.[0] ||
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0'
+                      );
+                    }}
+                    className={`p-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition-all ${
+                      browserType === 'firefox'
+                        ? 'bg-orange-600/20 border-orange-500 text-white shadow-sm'
+                        : 'bg-[#151d30] border-[#24304f] text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    <span>🦊 Firefox (Mozilla)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Mozilla IP Protection (VPN) Toggle for Firefox */}
+              {browserType === 'firefox' && (
+                <div className="p-4 rounded-xl bg-gradient-to-r from-orange-950/40 via-[#1c1a2e] to-purple-950/40 border border-orange-500/50 space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-bold text-lg">
+                        🛡️
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-white flex items-center gap-2">
+                          <span>Mozilla IP Protection (Встроенный VPN)</span>
+                          <span className="text-[10px] uppercase tracking-wider bg-orange-500/20 border border-orange-500/30 text-orange-300 px-2 py-0.5 rounded font-mono font-bold">Firefox 135+ / 150</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Автоматически активирует параметр <code className="text-orange-300 font-mono text-[11px] bg-black/40 px-1 py-0.5 rounded">browser.ipProtection.enable = true</code>
+                        </p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={mozillaVpn}
+                        onChange={(e) => setMozillaVpn(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+
+                  {mozillaVpn && (
+                    <div className="text-xs text-gray-300 bg-[#0e1526]/90 p-3.5 rounded-lg border border-[#24304f] space-y-2 leading-relaxed">
+                      <div className="font-semibold text-orange-300 flex items-center gap-1.5 text-xs">
+                        <Check size={14} className="text-emerald-400" /> Настройка профиля с VPN Mozilla:
+                      </div>
+                      <ul className="list-disc list-inside text-gray-300 space-y-1 pl-1 text-[11px]">
+                        <li>В файл <code className="text-blue-300 font-mono">user.js</code> профиля прописываются флаги <code className="text-orange-300 font-mono">browser.ipProtection.enabled</code>, <code className="text-orange-300 font-mono">featureGate</code> и <code className="text-orange-300 font-mono">ui.enabled</code>.</li>
+                        <li>При первом запуске автоматически открывается страница входа в аккаунт Mozilla (<code className="text-blue-300 font-mono">about:preferences#fxa</code>) и проверка IP на <code className="text-blue-300 font-mono">browserleaks.com/ip</code>.</li>
+                        <li>На панели инструментов Firefox появится кнопка щита для быстрого включения/отключения VPN (50 ГБ бесплатного трафика).</li>
+                        <li>Авторизация в аккаунте и состояние VPN сохраняются в папке профиля и переносятся между ПК.</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Tags */}
               <div>

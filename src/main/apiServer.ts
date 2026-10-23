@@ -42,6 +42,7 @@ export function startApiServer(port = 3001): http.Server {
         const r = running.get(p.id);
         return {
           ...p,
+          mozilla_vpn: Boolean(p.mozilla_vpn),
           tags: typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags,
           status: r ? 'running' : 'stopped',
           cdp_port: r ? r.cdpPort : undefined,
@@ -72,6 +73,7 @@ export function startApiServer(port = 3001): http.Server {
         success: true,
         profile: {
           ...profile,
+          mozilla_vpn: Boolean(profile.mozilla_vpn),
           tags: typeof profile.tags === 'string' ? JSON.parse(profile.tags) : profile.tags,
           status: running ? 'running' : 'stopped',
           cdp_port: running ? running.cdpPort : undefined,

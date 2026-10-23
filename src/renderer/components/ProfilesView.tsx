@@ -249,9 +249,25 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({
                       {/* Profile Name & Group */}
                       <td className="p-3.5">
                         <div className="flex flex-col">
-                          <span className="font-semibold text-white text-sm hover:text-blue-400 cursor-pointer transition-colors" onClick={() => onEditProfile(p)}>
-                            {p.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-white text-sm hover:text-blue-400 cursor-pointer transition-colors" onClick={() => onEditProfile(p)}>
+                              {p.name}
+                            </span>
+                            {p.browser_type === 'firefox' ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                                🦊 Firefox
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                🌐 Chrome
+                              </span>
+                            )}
+                            {p.mozilla_vpn && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                🛡️ Mozilla VPN
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-400">
                             {p.group_name && (
                               <span className="text-blue-400 font-medium">{p.group_name}</span>

@@ -59,6 +59,7 @@ export async function initDatabase(): Promise<Database> {
       memory_gb INTEGER DEFAULT 16,
       notes TEXT DEFAULT '',
       custom_flags TEXT DEFAULT '',
+      mozilla_vpn INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -94,6 +95,13 @@ export async function initDatabase(): Promise<Database> {
       value TEXT NOT NULL
     );
   `);
+
+  // Safe migration for existing databases
+  try {
+    db.run('ALTER TABLE profiles ADD COLUMN mozilla_vpn INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column already exists
+  }
 
   saveDatabase();
   return db;

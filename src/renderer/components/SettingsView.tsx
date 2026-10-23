@@ -21,6 +21,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast }) => {
   const [paths, setPaths] = useState<any>(null);
   const [backups, setBackups] = useState<string[]>([]);
   const [customChromium, setCustomChromium] = useState('');
+  const [customFirefox, setCustomFirefox] = useState('');
   const [apiPort, setApiPort] = useState(3001);
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +34,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast }) => {
       const s = await window.antyApi.getSettings();
       setSettings(s);
       setCustomChromium(s.chromium_path || '');
+      setCustomFirefox(s.firefox_path || '');
       setApiPort(s.api_port || 3001);
 
       const p = await window.antyApi.getAppPaths();
@@ -50,6 +52,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast }) => {
     try {
       await window.antyApi.saveSettings({
         chromium_path: customChromium.trim(),
+        firefox_path: customFirefox.trim(),
         api_port: apiPort,
       });
       onShowToast('Настройки успешно сохранены', 'success');
@@ -177,6 +180,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast }) => {
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
             Если поле пустое, AntyBrowser автоматически использует встроенный portable-Chromium или системный Chrome/Edge.
+          </p>
+        </div>
+
+        {/* Firefox Configuration */}
+        <div>
+          <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            Пользовательский путь к firefox.exe (Mozilla Firefox / Nightly)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customFirefox}
+              onChange={(e) => setCustomFirefox(e.target.value)}
+              placeholder="Автоопределение (./bin/firefox/firefox.exe -> Mozilla Firefox -> Firefox Nightly)"
+              className="anty-input flex-1 text-xs font-mono"
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">
+            Для работы встроенного Mozilla VPN рекомендуется использовать Firefox версии 135+ или Firefox Nightly 150+.
           </p>
         </div>
 

@@ -40,6 +40,7 @@ export interface Profile {
   memory_gb: number;
   notes: string;
   custom_flags: string;
+  mozilla_vpn?: boolean;
   created_at: string;
   updated_at: string;
   // Runtime status
@@ -79,6 +80,7 @@ export interface ExtensionItem {
 
 export interface AppSettings {
   chromium_path: string;
+  firefox_path?: string;
   api_port: number;
   api_enabled: boolean;
   theme: string;
